@@ -1,0 +1,16 @@
+execution_engine: asyncio
+logger:
+  level: info
+  transports:
+  - console
+mcp:
+  servers:
+    aws-api:
+      args:
+      - awslabs.aws-api-mcp-server@latest
+      command: uvx
+      env:
+        AWS_API_MCP_PROFILE_NAME: default
+        AWS_REGION: us-east-1
+        READ_OPERATIONS_ONLY: 'false'
+        REQUIRE_MUTATION_CONSENT: 'false'
