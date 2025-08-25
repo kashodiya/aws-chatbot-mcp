@@ -156,9 +156,9 @@ Note: This is a simplified demo version. The full MCP-powered agent will provide
             }
         
         try:
-            # Check if AWS CLI is available
+            # Check if AWS CLI is available by trying to run aws --version
             result = subprocess.run(
-                ["which", "aws"],
+                ["aws", "--version"],
                 capture_output=True,
                 text=True,
                 timeout=5
