@@ -85,7 +85,7 @@ Ensure your AWS credentials are properly configured. You can use:
 Start the web server:
 
 ```bash
-uv run run_web.py
+uv run scripts/run_web.py
 ```
 
 Then open your browser to `http://localhost:50333`
@@ -95,7 +95,7 @@ Then open your browser to `http://localhost:50333`
 Start the command-line interface:
 
 ```bash
-uv run run_cli.py
+uv run scripts/run_cli.py
 ```
 
 ### Example Queries
@@ -108,6 +108,29 @@ Try these example queries:
 - "Create a security group for web servers"
 - "Show VPC information"
 - "List Lambda functions"
+
+### Running Examples
+
+The `examples/` directory contains demonstration scripts:
+
+```bash
+# Basic demo with sample queries
+uv run examples/demo.py
+
+# Compare LLM-driven vs direct agent approaches
+uv run examples/demo_llm_vs_direct.py
+
+# Demonstrate memory features
+uv run examples/demo_memory_feature.py
+```
+
+### Testing Setup
+
+Verify your installation and configuration:
+
+```bash
+uv run tests/test_setup.py
+```
 
 ## Security Considerations
 
@@ -169,6 +192,15 @@ aws-chatbot/
 │   ├── aws_agent.py       # Main AWS agent logic
 │   ├── web_app.py         # FastAPI web application
 │   └── main.py            # CLI entry point
+├── scripts/
+│   ├── run_web.py         # Web server launcher
+│   └── run_cli.py         # CLI launcher
+├── examples/
+│   ├── demo.py            # Basic demo
+│   ├── demo_llm_vs_direct.py  # LLM vs direct comparison
+│   └── demo_memory_feature.py # Memory feature demo
+├── tests/
+│   └── test_setup.py      # Setup and import tests
 ├── templates/
 │   └── index.html         # Web UI template
 ├── static/
@@ -176,8 +208,6 @@ aws-chatbot/
 │   └── script.js          # Web UI JavaScript
 ├── .env.example           # Environment variables template
 ├── config.yaml.example    # MCP configuration template
-├── run_web.py             # Web server launcher
-├── run_cli.py             # CLI launcher
 └── README.md
 ```
 

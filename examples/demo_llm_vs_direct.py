@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 # Add the src directory to the Python path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from aws_chatbot.simple_agent import SimpleAWSAgent
 from aws_chatbot.llm_driven_agent import LLMDrivenAWSAgent

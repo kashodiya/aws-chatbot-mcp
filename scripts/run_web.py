@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 
 # Add the src directory to the Python path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import uvicorn
 from aws_chatbot.config import settings
