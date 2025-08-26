@@ -40,8 +40,8 @@ if __name__ == "__main__":
     print("🚀 [RUN_WEB] Starting uvicorn server...")
     uvicorn.run(
         "aws_chatbot.web_app:app",
-        host="0.0.0.0",
-        port=54491,
+        host=settings.host,
+        port=settings.port,
         reload=True,
         reload_dirs=["src"]
     )
