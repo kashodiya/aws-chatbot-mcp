@@ -2,14 +2,15 @@
 
 import asyncio
 import json
-from typing import Dict, Any
-from fastapi import FastAPI, Request, Form, HTTPException
+from typing import Dict, Any, Optional
+from fastapi import FastAPI, Request, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
 from .llm_driven_agent import LLMDrivenAWSAgent as AWSAgent
 from .config import settings
+from .conversation_tracker import get_conversation_tracker, reset_conversation_tracker
 
 # Global agent instance
 aws_agent = None
@@ -56,6 +57,11 @@ templates = Jinja2Templates(directory="templates")
 async def home(request: Request):
     """Serve the main chatbot interface"""
     return templates.TemplateResponse("index.html", {"request": request})
+
+@app.get("/conversation-viewer", response_class=HTMLResponse)
+async def conversation_viewer(request: Request):
+    """Serve the detailed conversation viewer interface"""
+    return templates.TemplateResponse("conversation_viewer.html", {"request": request})
 
 @app.post("/chat")
 async def chat(request: Request, message: str = Form(...)):
@@ -200,12 +206,178 @@ async def clear_memory():
             "error": str(e)
         }, status_code=500)
 
+@app.get("/api/conversation/detailed")
+async def get_detailed_conversation(
+    conversation_id: Optional[str] = Query(None, description="Specific conversation ID"),
+    limit: int = Query(50, description="Number of recent events to return")
+):
+    """Get detailed conversation events including LLM-tool interactions"""
+    try:
+        tracker = get_conversation_tracker()
+        
+        if conversation_id:
+            # Get specific conversation as tree structure
+            conversation_tree = tracker.get_conversation_tree(conversation_id)
+            return JSONResponse({
+                "success": True,
+                "conversation_id": conversation_id,
+                "data": conversation_tree
+            })
+        else:
+            # Get recent events
+            recent_events = tracker.get_recent_events(limit)
+            events_data = []
+            
+            for event in recent_events:
+                event_dict = {
+                    "id": event.id,
+                    "timestamp": event.timestamp,
+                    "event_type": event.event_type.value,
+                    "content": event.content,
+                    "metadata": event.metadata,
+                    "session_id": event.session_id,
+                    "parent_id": event.parent_id,
+                    "duration_ms": event.duration_ms
+                }
+                events_data.append(event_dict)
+            
+            return JSONResponse({
+                "success": True,
+                "events": events_data,
+                "total_events": len(events_data)
+            })
+            
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+@app.get("/api/conversation/export")
+async def export_conversation(
+    conversation_id: Optional[str] = Query(None, description="Specific conversation ID to export"),
+    format: str = Query("json", description="Export format (json)")
+):
+    """Export conversation data"""
+    try:
+        tracker = get_conversation_tracker()
+        
+        if conversation_id:
+            exported_data = tracker.export_conversation(conversation_id, format)
+            filename = f"conversation_{conversation_id}.{format}"
+        else:
+            exported_data = tracker.export_session(format)
+            filename = f"session_{tracker.session_id}.{format}"
+        
+        return JSONResponse({
+            "success": True,
+            "data": exported_data,
+            "filename": filename
+        })
+        
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+@app.get("/api/conversation/summary")
+async def get_conversation_summary():
+    """Get session summary with conversation statistics"""
+    try:
+        tracker = get_conversation_tracker()
+        summary = tracker.get_session_summary()
+        
+        return JSONResponse({
+            "success": True,
+            "summary": summary
+        })
+        
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+@app.post("/api/conversation/clear")
+async def clear_detailed_conversation():
+    """Clear detailed conversation tracking"""
+    try:
+        tracker = get_conversation_tracker()
+        tracker.clear_session()
+        
+        return JSONResponse({
+            "success": True,
+            "message": "Detailed conversation tracking cleared"
+        })
+        
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+@app.get("/api/conversation/events/filter")
+async def filter_conversation_events(
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    conversation_id: Optional[str] = Query(None, description="Filter by conversation ID"),
+    limit: int = Query(100, description="Maximum number of events to return")
+):
+    """Filter conversation events by type or conversation ID"""
+    try:
+        tracker = get_conversation_tracker()
+        
+        if conversation_id:
+            events = tracker.get_conversation_events(conversation_id)
+        else:
+            events = tracker.get_recent_events(limit * 2)  # Get more to filter
+        
+        # Filter by event type if specified
+        if event_type:
+            events = [e for e in events if e.event_type.value == event_type]
+        
+        # Limit results
+        events = events[:limit]
+        
+        events_data = []
+        for event in events:
+            event_dict = {
+                "id": event.id,
+                "timestamp": event.timestamp,
+                "event_type": event.event_type.value,
+                "content": event.content,
+                "metadata": event.metadata,
+                "session_id": event.session_id,
+                "parent_id": event.parent_id,
+                "duration_ms": event.duration_ms
+            }
+            events_data.append(event_dict)
+        
+        return JSONResponse({
+            "success": True,
+            "events": events_data,
+            "filters": {
+                "event_type": event_type,
+                "conversation_id": conversation_id,
+                "limit": limit
+            },
+            "total_events": len(events_data)
+        })
+        
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     global aws_agent
     
     memory_info = {}
+    detailed_tracking_info = {}
+    
     if aws_agent:
         try:
             memory_stats = aws_agent.get_memory_stats()
@@ -216,10 +388,23 @@ async def health_check():
         except:
             memory_info = {"error": "Could not retrieve memory stats"}
     
+    try:
+        tracker = get_conversation_tracker()
+        summary = tracker.get_session_summary()
+        detailed_tracking_info = {
+            "session_id": summary.get("session_id"),
+            "total_events": summary.get("total_events", 0),
+            "conversations": summary.get("conversations", 0),
+            "event_counts": summary.get("event_counts", {})
+        }
+    except:
+        detailed_tracking_info = {"error": "Could not retrieve detailed tracking info"}
+    
     return JSONResponse({
         "status": "healthy",
         "agent_available": aws_agent is not None,
         "memory": memory_info,
+        "detailed_tracking": detailed_tracking_info,
         "settings": {
             "aws_region": settings.aws_region,
             "read_only": settings.read_operations_only,

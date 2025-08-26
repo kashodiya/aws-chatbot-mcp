@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWS Chatbot - Conversation Viewer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+    <style>
+        .event-card {
+            margin-bottom: 10px;
+            border-left: 4px solid #dee2e6;
+        }
+        .event-user_message { border-left-color: #0d6efd; }
+        .event-agent_response { border-left-color: #198754; }
+        .event-llm_request { border-left-color: #fd7e14; }
+        .event-llm_response { border-left-color: #ffc107; }
+        .event-tool_call { border-left-color: #6f42c1; }
+        .event-tool_response { border-left-color: #20c997; }
+        .event-command_execution { border-left-color: #dc3545; }
+        .event-command_result { border-left-color: #e83e8c; }
+        .event-agent_reasoning { border-left-color: #6c757d; }
+        .event-error { border-left-color: #dc3545; background-color: #f8d7da; }
+        
+        .event-content {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .event-metadata {
+            font-size: 0.85em;
+            color: #6c757d;
+        }
+        
+        .conversation-tree {
+            margin-left: 20px;
+            border-left: 2px dashed #dee2e6;
+            padding-left: 15px;
+        }
+        
+        .filter-controls {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .event-type-badge {
+            font-size: 0.75em;
+        }
+        
+        .json-viewer {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid h-100">
+        <div class="row h-100">
+            <!-- Sidebar -->
+            <div class="col-md-3 sidebar">
+                <div class="sidebar-header">
+                    <h4><i class="fas fa-microscope"></i> Conversation Viewer</h4>
+                    <p class="text-muted">Detailed LLM-Tool Interactions</p>
+                </div>
+                
+                <div class="sidebar-content">
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6><i class="fas fa-chart-bar"></i> Session Summary</h6>
+                        </div>
+                        <div class="card-body" id="session-summary">
+                            <div class="spinner-border spinner-border-sm" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <span class="ms-2">Loading summary...</span>
+                        </div>
+                    </div>
+                    
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6><i class="fas fa-download"></i> Export</h6>
+                        </div>
+                        <div class="card-body">
+                            <button class="btn btn-outline-primary btn-sm w-100 mb-2" id="export-session">
+                                <i class="fas fa-download"></i> Export Session
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm w-100 mb-2" id="clear-tracking">
+                                <i class="fas fa-trash"></i> Clear Tracking
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-header">
+                            <h6><i class="fas fa-link"></i> Navigation</h6>
+                        </div>
+                        <div class="card-body">
+                            <a href="/" class="btn btn-outline-primary btn-sm w-100">
+                                <i class="fas fa-comments"></i> Back to Chat
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="col-md-9 main-content">
+                <div class="chat-container">
+                    <div class="chat-header">
+                        <h5><i class="fas fa-microscope"></i> Detailed Conversation Analysis</h5>
+                        <button class="btn btn-outline-secondary btn-sm" id="refresh-data">
+                            <i class="fas fa-sync"></i> Refresh
+                        </button>
+                    </div>
+                    
+                    <!-- Filter Controls -->
+                    <div class="filter-controls">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label for="event-type-filter" class="form-label">Event Type</label>
+                                <select class="form-select form-select-sm" id="event-type-filter">
+                                    <option value="">All Events</option>
+                                    <option value="user_message">User Messages</option>
+                                    <option value="agent_response">Agent Responses</option>
+                                    <option value="llm_request">LLM Requests</option>
+                                    <option value="llm_response">LLM Responses</option>
+                                    <option value="tool_call">Tool Calls</option>
+                                    <option value="tool_response">Tool Responses</option>
+                                    <option value="command_execution">Command Execution</option>
+                                    <option value="command_result">Command Results</option>
+                                    <option value="agent_reasoning">Agent Reasoning</option>
+                                    <option value="error">Errors</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="limit-filter" class="form-label">Limit</label>
+                                <select class="form-select form-select-sm" id="limit-filter">
+                                    <option value="25">25 Events</option>
+                                    <option value="50" selected>50 Events</option>
+                                    <option value="100">100 Events</option>
+                                    <option value="200">200 Events</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="view-mode" class="form-label">View Mode</label>
+                                <select class="form-select form-select-sm" id="view-mode">
+                                    <option value="chronological" selected>Chronological</option>
+                                    <option value="tree">Tree Structure</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Events Display -->
+                    <div class="chat-messages" id="events-container">
+                        <div class="text-center p-4">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading events...</span>
+                            </div>
+                            <p class="mt-2">Loading conversation events...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        class ConversationViewer {
+            constructor() {
+                this.eventsContainer = document.getElementById('events-container');
+                this.sessionSummary = document.getElementById('session-summary');
+                this.eventTypeFilter = document.getElementById('event-type-filter');
+                this.limitFilter = document.getElementById('limit-filter');
+                this.viewMode = document.getElementById('view-mode');
+                this.refreshBtn = document.getElementById('refresh-data');
+                this.exportBtn = document.getElementById('export-session');
+                this.clearBtn = document.getElementById('clear-tracking');
+                
+                this.init();
+            }
+            
+            init() {
+                // Event listeners
+                this.refreshBtn.addEventListener('click', () => this.loadData());
+                this.exportBtn.addEventListener('click', () => this.exportSession());
+                this.clearBtn.addEventListener('click', () => this.clearTracking());
+                
+                // Filter change listeners
+                this.eventTypeFilter.addEventListener('change', () => this.loadEvents());
+                this.limitFilter.addEventListener('change', () => this.loadEvents());
+                this.viewMode.addEventListener('change', () => this.loadEvents());
+                
+                // Initial load
+                this.loadData();
+                
+                // Auto-refresh every 30 seconds
+                setInterval(() => this.loadData(), 30000);
+            }
+            
+            async loadData() {
+                await Promise.all([
+                    this.loadSessionSummary(),
+                    this.loadEvents()
+                ]);
+            }
+            
+            async loadSessionSummary() {
+                try {
+                    const response = await fetch('/api/conversation/summary');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        const summary = data.summary;
+                        this.sessionSummary.innerHTML = `
+                            <div class="mb-2">
+                                <strong>Session ID:</strong><br>
+                                <small class="text-muted">${summary.session_id || 'N/A'}</small>
+                            </div>
+                            <div class="mb-2">
+                                <strong>Total Events:</strong> ${summary.total_events || 0}
+                            </div>
+                            <div class="mb-2">
+                                <strong>Conversations:</strong> ${summary.conversations || 0}
+                            </div>
+                            <div class="mb-2">
+                                <strong>Event Types:</strong><br>
+                                ${this.formatEventCounts(summary.event_counts || {})}
+                            </div>
+                        `;
+                    } else {
+                        this.sessionSummary.innerHTML = `<div class="text-danger">Error: ${data.error}</div>`;
+                    }
+                } catch (error) {
+                    this.sessionSummary.innerHTML = `<div class="text-danger">Connection error: ${error.message}</div>`;
+                }
+            }
+            
+            formatEventCounts(eventCounts) {
+                if (Object.keys(eventCounts).length === 0) {
+                    return '<small class="text-muted">No events</small>';
+                }
+                
+                return Object.entries(eventCounts)
+                    .map(([type, count]) => `<small>${type}: ${count}</small>`)
+                    .join('<br>');
+            }
+            
+            async loadEvents() {
+                const eventType = this.eventTypeFilter.value;
+                const limit = parseInt(this.limitFilter.value);
+                const viewMode = this.viewMode.value;
+                
+                try {
+                    let url = '/api/conversation/detailed';
+                    const params = new URLSearchParams({ limit: limit.toString() });
+                    
+                    if (eventType) {
+                        url = '/api/conversation/events/filter';
+                        params.append('event_type', eventType);
+                    }
+                    
+                    const response = await fetch(`${url}?${params}`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        if (viewMode === 'tree' && data.data) {
+                            this.displayTreeView(data.data);
+                        } else {
+                            this.displayChronologicalView(data.events || []);
+                        }
+                    } else {
+                        this.eventsContainer.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                    }
+                } catch (error) {
+                    this.eventsContainer.innerHTML = `<div class="alert alert-danger">Connection error: ${error.message}</div>`;
+                }
+            }
+            
+            displayChronologicalView(events) {
+                if (events.length === 0) {
+                    this.eventsContainer.innerHTML = '<div class="alert alert-info">No events found</div>';
+                    return;
+                }
+                
+                const eventsHtml = events.map(event => this.createEventCard(event)).join('');
+                this.eventsContainer.innerHTML = eventsHtml;
+            }
+            
+            displayTreeView(treeData) {
+                // For tree view, we'll show a simplified structure
+                this.eventsContainer.innerHTML = '<div class="alert alert-info">Tree view coming soon...</div>';
+            }
+            
+            createEventCard(event) {
+                const timestamp = new Date(event.timestamp).toLocaleString();
+                const duration = event.duration_ms ? `${event.duration_ms.toFixed(2)}ms` : '';
+                
+                return `
+                    <div class="card event-card event-${event.event_type}">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="badge bg-secondary event-type-badge">${event.event_type}</span>
+                                <small class="text-muted ms-2">${timestamp}</small>
+                                ${duration ? `<small class="text-muted ms-2">(${duration})</small>` : ''}
+                            </div>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="toggleEventDetails('${event.id}')">
+                                <i class="fas fa-chevron-down"></i>
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="event-content">
+                                ${this.formatEventContent(event)}
+                            </div>
+                            <div class="event-details collapse" id="details-${event.id}">
+                                <hr>
+                                <div class="event-metadata">
+                                    <strong>Metadata:</strong>
+                                    <div class="json-viewer">${JSON.stringify(event.metadata, null, 2)}</div>
+                                </div>
+                                ${event.parent_id ? `<div class="mt-2"><strong>Parent ID:</strong> ${event.parent_id}</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            formatEventContent(event) {
+                const content = event.content;
+                
+                switch (event.event_type) {
+                    case 'user_message':
+                        return `<strong>User:</strong> ${this.escapeHtml(content)}`;
+                    
+                    case 'agent_response':
+                        return `<strong>Agent:</strong> ${this.escapeHtml(content)}`;
+                    
+                    case 'llm_request':
+                        return `
+                            <strong>LLM Request:</strong><br>
+                            <strong>Model:</strong> ${content.model || 'N/A'}<br>
+                            <strong>Messages:</strong> ${content.messages ? content.messages.length : 0}<br>
+                            <strong>Tools:</strong> ${content.tools ? content.tools.length : 0}
+                        `;
+                    
+                    case 'llm_response':
+                        return `
+                            <strong>LLM Response:</strong><br>
+                            ${content.content ? `<div class="mt-1">${this.escapeHtml(content.content)}</div>` : ''}
+                            ${content.tool_calls && content.tool_calls.length > 0 ? 
+                                `<div class="mt-1"><strong>Tool Calls:</strong> ${content.tool_calls.length}</div>` : ''}
+                        `;
+                    
+                    case 'tool_call':
+                        return `
+                            <strong>Tool Call:</strong> ${content.tool_name}<br>
+                            <strong>Arguments:</strong>
+                            <div class="json-viewer mt-1">${JSON.stringify(content.arguments, null, 2)}</div>
+                        `;
+                    
+                    case 'tool_response':
+                        return `
+                            <strong>Tool Response:</strong><br>
+                            <strong>Success:</strong> ${content.success ? 'Yes' : 'No'}<br>
+                            ${content.error ? `<strong>Error:</strong> ${this.escapeHtml(content.error)}<br>` : ''}
+                            ${content.result ? `<div class="json-viewer mt-1">${JSON.stringify(content.result, null, 2)}</div>` : ''}
+                        `;
+                    
+                    case 'command_execution':
+                        return `<strong>Command:</strong> <code>${this.escapeHtml(content.command)}</code>`;
+                    
+                    case 'command_result':
+                        return `
+                            <strong>Command Result:</strong><br>
+                            <strong>Success:</strong> ${content.success ? 'Yes' : 'No'}<br>
+                            ${content.error ? `<strong>Error:</strong> ${this.escapeHtml(content.error)}<br>` : ''}
+                            ${content.output ? `<div class="json-viewer mt-1">${this.escapeHtml(content.output)}</div>` : ''}
+                        `;
+                    
+                    case 'agent_reasoning':
+                        return `
+                            <strong>Agent Reasoning (${content.type}):</strong><br>
+                            ${this.escapeHtml(content.reasoning)}
+                        `;
+                    
+                    case 'error':
+                        return `
+                            <strong>Error (${content.type}):</strong><br>
+                            <span class="text-danger">${this.escapeHtml(content.error)}</span>
+                        `;
+                    
+                    default:
+                        return `<div class="json-viewer">${JSON.stringify(content, null, 2)}</div>`;
+                }
+            }
+            
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+            
+            async exportSession() {
+                try {
+                    const response = await fetch('/api/conversation/export');
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Create download link
+                        const blob = new Blob([data.data], { type: 'application/json' });
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = data.filename;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        window.URL.revokeObjectURL(url);
+                    } else {
+                        alert(`Export failed: ${data.error}`);
+                    }
+                } catch (error) {
+                    alert(`Export failed: ${error.message}`);
+                }
+            }
+            
+            async clearTracking() {
+                if (confirm('Are you sure you want to clear all conversation tracking data?')) {
+                    try {
+                        const response = await fetch('/api/conversation/clear', { method: 'POST' });
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            alert('Conversation tracking cleared successfully');
+                            this.loadData();
+                        } else {
+                            alert(`Clear failed: ${data.error}`);
+                        }
+                    } catch (error) {
+                        alert(`Clear failed: ${error.message}`);
+                    }
+                }
+            }
+        }
+        
+        function toggleEventDetails(eventId) {
+            const details = document.getElementById(`details-${eventId}`);
+            const button = details.previousElementSibling.querySelector('button i');
+            
+            if (details.classList.contains('show')) {
+                details.classList.remove('show');
+                button.className = 'fas fa-chevron-down';
+            } else {
+                details.classList.add('show');
+                button.className = 'fas fa-chevron-up';
+            }
+        }
+        
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            new ConversationViewer();
+        });
+    </script>
+</body>
+</html>

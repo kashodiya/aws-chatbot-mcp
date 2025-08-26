@@ -1,10 +1,12 @@
 import asyncio
 import json
 import subprocess
+import time
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from .config import settings
 from .llm_adapter import CustomLLMAdapter
+from .conversation_tracker import get_conversation_tracker
 
 class ConversationMemory:
     """Simple conversation memory to track user interactions and AWS command results"""
@@ -88,9 +90,21 @@ class LLMDrivenAWSAgent:
         if not self._initialized or not self.llm:
             return "Agent not initialized."
         
+        # Get detailed conversation tracker
+        tracker = get_conversation_tracker()
+        
+        # Start a new conversation turn
+        conversation_id = tracker.start_conversation(query)
+        
         # Get conversation context for memory-aware responses
         context_summary = self.memory.get_context_summary()
         recent_commands = self.memory.get_recent_commands()
+        
+        # Log agent reasoning
+        tracker.log_agent_reasoning(
+            f"Processing user query with context. Recent commands: {recent_commands}",
+            "query_processing"
+        )
         
         # Enhanced system prompt with memory context
         system_prompt = f"""You are an AWS assistant that helps users interact with AWS services. You have memory of previous conversations and can reference past interactions.
@@ -158,6 +172,12 @@ Always be helpful and security-conscious. If a command might modify resources, e
                 command_result = None
                 final_response = ""
                 
+                # Log agent reasoning about the action
+                tracker.log_agent_reasoning(
+                    f"LLM determined action: {action}. Command: {response_data.get('command', 'None')}",
+                    "action_determination"
+                )
+                
                 if action == "execute_command":
                     command = response_data.get("command", "")
                     explanation = response_data.get("explanation", "")
@@ -201,6 +221,9 @@ If this is a follow-up question referencing previous conversation, acknowledge t
                 else:  # provide_info
                     final_response = response_data.get("response", "I'm here to help you with AWS services!")
                 
+                # Log the final agent response
+                tracker.log_agent_response(final_response)
+                
                 # Store this interaction in memory
                 self.memory.add_interaction(
                     user_query=query,
@@ -214,6 +237,9 @@ If this is a follow-up question referencing previous conversation, acknowledge t
             except json.JSONDecodeError:
                 # If LLM response isn't valid JSON, return it as-is
                 final_response = llm_response
+                tracker.log_agent_response(final_response)
+                tracker.log_error("Failed to parse LLM response as JSON", "json_parse_error")
+                
                 self.memory.add_interaction(
                     user_query=query,
                     agent_response=final_response
@@ -222,6 +248,9 @@ If this is a follow-up question referencing previous conversation, acknowledge t
                 
         except Exception as e:
             error_response = f"I encountered an error while processing your query: {str(e)}"
+            tracker.log_error(str(e), "query_processing_error")
+            tracker.log_agent_response(error_response)
+            
             self.memory.add_interaction(
                 user_query=query,
                 agent_response=error_response
@@ -308,6 +337,12 @@ User: "get more details about them" (after listing instances) -> [{{"command": "
                 "command": command
             }
         
+        tracker = get_conversation_tracker()
+        
+        # Log command execution start
+        command_id = tracker.log_command_execution(command)
+        start_time = time.time()
+        
         try:
             # Check if AWS CLI is available
             result = subprocess.run(
@@ -318,11 +353,16 @@ User: "get more details about them" (after listing instances) -> [{{"command": "
             )
             
             if result.returncode != 0:
-                return {
+                duration_ms = (time.time() - start_time) * 1000
+                error_result = {
                     "success": False,
                     "error": "AWS CLI not found. Please install AWS CLI and configure your credentials.",
                     "command": command
                 }
+                
+                # Log command result
+                tracker.log_command_result(error_result, duration_ms)
+                return error_result
             
             # Execute the AWS CLI command
             cmd_parts = command.split()
@@ -333,28 +373,49 @@ User: "get more details about them" (after listing instances) -> [{{"command": "
                 timeout=30
             )
             
+            duration_ms = (time.time() - start_time) * 1000
+            
             if result.returncode == 0:
-                return {
+                success_result = {
                     "success": True,
                     "output": result.stdout,
                     "command": command
                 }
+                
+                # Log successful command result
+                tracker.log_command_result(success_result, duration_ms)
+                return success_result
             else:
-                return {
+                error_result = {
                     "success": False,
                     "error": result.stderr or "Command failed",
                     "command": command
                 }
                 
+                # Log failed command result
+                tracker.log_command_result(error_result, duration_ms)
+                return error_result
+                
         except subprocess.TimeoutExpired:
-            return {
+            duration_ms = (time.time() - start_time) * 1000
+            timeout_result = {
                 "success": False,
                 "error": "Command timed out",
                 "command": command
             }
+            
+            # Log timeout result
+            tracker.log_command_result(timeout_result, duration_ms)
+            return timeout_result
         except Exception as e:
-            return {
+            duration_ms = (time.time() - start_time) * 1000
+            exception_result = {
                 "success": False,
                 "error": f"Error executing command: {str(e)}",
                 "command": command
             }
+            
+            # Log exception result
+            tracker.log_error(str(e), "command_execution_error")
+            tracker.log_command_result(exception_result, duration_ms)
+            return exception_result

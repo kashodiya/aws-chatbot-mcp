@@ -1,8 +1,10 @@
 
 import asyncio
+import time
 from typing import Dict, Any, List, Optional
 from openai import AsyncOpenAI
 from .config import settings
+from .conversation_tracker import get_conversation_tracker
 
 class CustomLLMAdapter:
     """Custom LLM adapter for non-OpenAI models served via LiteLLM or similar"""
@@ -26,12 +28,23 @@ class CustomLLMAdapter:
         **kwargs
     ) -> str:
         """Generate a string response from the LLM"""
+        tracker = get_conversation_tracker()
+        
         messages = []
         
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         
         messages.append({"role": "user", "content": message})
+        
+        # Log the LLM request
+        request_id = tracker.log_llm_request(
+            messages=messages,
+            tools=tools,
+            model=self.model
+        )
+        
+        start_time = time.time()
         
         try:
             response = await self.client.chat.completions.create(
@@ -41,9 +54,28 @@ class CustomLLMAdapter:
                 **kwargs
             )
             
-            return response.choices[0].message.content or ""
+            duration_ms = (time.time() - start_time) * 1000
+            content = response.choices[0].message.content or ""
+            
+            # Log the LLM response
+            tracker.log_llm_response(
+                response={"content": content, "raw_response": response.model_dump()},
+                duration_ms=duration_ms
+            )
+            
+            return content
         except Exception as e:
-            return f"Error generating response: {str(e)}"
+            duration_ms = (time.time() - start_time) * 1000
+            error_msg = f"Error generating response: {str(e)}"
+            
+            # Log the error
+            tracker.log_error(error_msg, "llm_generation_error")
+            tracker.log_llm_response(
+                response={"content": error_msg, "error": str(e)},
+                duration_ms=duration_ms
+            )
+            
+            return error_msg
     
     async def generate_with_tools(
         self,
@@ -53,12 +85,23 @@ class CustomLLMAdapter:
         **kwargs
     ) -> Dict[str, Any]:
         """Generate response with tool calling capability"""
+        tracker = get_conversation_tracker()
+        
         messages = []
         
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         
         messages.append({"role": "user", "content": message})
+        
+        # Log the LLM request with tools
+        request_id = tracker.log_llm_request(
+            messages=messages,
+            tools=tools,
+            model=self.model
+        )
+        
+        start_time = time.time()
         
         try:
             response = await self.client.chat.completions.create(
@@ -69,6 +112,7 @@ class CustomLLMAdapter:
                 **kwargs
             )
             
+            duration_ms = (time.time() - start_time) * 1000
             choice = response.choices[0]
             message_response = choice.message
             
@@ -79,19 +123,47 @@ class CustomLLMAdapter:
             
             if message_response.tool_calls:
                 for tool_call in message_response.tool_calls:
-                    result["tool_calls"].append({
+                    tool_call_data = {
                         "id": tool_call.id,
                         "type": tool_call.type,
                         "function": {
                             "name": tool_call.function.name,
                             "arguments": tool_call.function.arguments
                         }
-                    })
+                    }
+                    result["tool_calls"].append(tool_call_data)
+                    
+                    # Log each tool call
+                    tracker.log_tool_call(
+                        tool_name=tool_call.function.name,
+                        arguments=tool_call.function.arguments,
+                        tool_call_id=tool_call.id
+                    )
+            
+            # Log the LLM response
+            tracker.log_llm_response(
+                response={
+                    "content": result["content"],
+                    "tool_calls": result["tool_calls"],
+                    "raw_response": response.model_dump()
+                },
+                duration_ms=duration_ms
+            )
             
             return result
         except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000
+            error_msg = f"Error generating response with tools: {str(e)}"
+            
+            # Log the error
+            tracker.log_error(error_msg, "llm_tool_generation_error")
+            tracker.log_llm_response(
+                response={"content": error_msg, "tool_calls": [], "error": str(e)},
+                duration_ms=duration_ms
+            )
+            
             return {
-                "content": f"Error generating response with tools: {str(e)}",
+                "content": error_msg,
                 "tool_calls": []
             }
 

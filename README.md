@@ -11,6 +11,7 @@ An AI-powered chatbot for managing AWS services using natural language. Built wi
 - 🔒 **Security First**: Built-in safety controls and read-only mode
 - ⚡ **Real-time**: Fast responses with streaming support
 - 🎯 **Smart Suggestions**: AI-powered command suggestions and help
+- 🔍 **Enhanced Conversation Tracking**: Complete visibility into LLM-to-tool interactions
 
 ## Prerequisites
 
@@ -122,7 +123,22 @@ uv run examples/demo_llm_vs_direct.py
 
 # Demonstrate memory features
 uv run examples/demo_memory_feature.py
+
+# Demonstrate enhanced conversation tracking
+uv run examples/demo_enhanced_tracking.py
 ```
+
+### Enhanced Conversation Tracking
+
+This chatbot includes comprehensive conversation tracking that captures all LLM-to-tool interactions:
+
+- **Complete Visibility**: See every LLM request, tool call, and command execution
+- **Performance Metrics**: Timing data for all operations
+- **Web Viewer**: Detailed conversation analysis at `/conversation-viewer`
+- **Export Capabilities**: Download conversation data for analysis
+- **Real-time Statistics**: Live tracking of events and performance
+
+For detailed information, see [ENHANCED_CONVERSATION_TRACKING.md](ENHANCED_CONVERSATION_TRACKING.md).
 
 ### Testing Setup
 

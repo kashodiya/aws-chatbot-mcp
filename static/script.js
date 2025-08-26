@@ -9,6 +9,7 @@ class AWSChatbot {
         this.sendBtn = document.getElementById('send-btn');
         this.clearBtn = document.getElementById('clear-chat');
         this.statusInfo = document.getElementById('status-info');
+        this.trackingInfo = document.getElementById('tracking-info');
         
         this.init();
     }
@@ -35,6 +36,9 @@ class AWSChatbot {
         
         // Auto-scroll to bottom
         this.scrollToBottom();
+        
+        // Auto-refresh status every 30 seconds
+        setInterval(() => this.checkStatus(), 30000);
     }
     
     async handleSubmit(e) {
@@ -223,12 +227,54 @@ class AWSChatbot {
             
             this.statusInfo.innerHTML = statusHtml;
             
+            // Update tracking info
+            if (data.detailed_tracking && !data.detailed_tracking.error) {
+                const tracking = data.detailed_tracking;
+                let trackingHtml = `
+                    <div class="mb-2">
+                        <strong>Session Events:</strong> ${tracking.total_events || 0}
+                    </div>
+                    <div class="mb-2">
+                        <strong>Conversations:</strong> ${tracking.conversations || 0}
+                    </div>
+                `;
+                
+                if (tracking.event_counts && Object.keys(tracking.event_counts).length > 0) {
+                    const topEvents = Object.entries(tracking.event_counts)
+                        .sort(([,a], [,b]) => b - a)
+                        .slice(0, 3)
+                        .map(([type, count]) => `${type}: ${count}`)
+                        .join('<br>');
+                    
+                    trackingHtml += `
+                        <div class="mb-2">
+                            <strong>Top Events:</strong><br>
+                            <small class="text-muted">${topEvents}</small>
+                        </div>
+                    `;
+                }
+                
+                this.trackingInfo.innerHTML = trackingHtml;
+            } else {
+                this.trackingInfo.innerHTML = `
+                    <div class="text-muted">
+                        <i class="fas fa-info-circle"></i> No tracking data available
+                    </div>
+                `;
+            }
+            
         } catch (error) {
             this.statusInfo.innerHTML = `
                 <div class="status-offline">
                     <i class="fas fa-times-circle"></i> Connection Error
                 </div>
                 <small class="text-muted">${error.message}</small>
+            `;
+            
+            this.trackingInfo.innerHTML = `
+                <div class="text-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Connection Error
+                </div>
             `;
         }
     }
