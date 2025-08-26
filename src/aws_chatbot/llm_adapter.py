@@ -1,11 +1,10 @@
 
 import asyncio
 from typing import Dict, Any, List, Optional
-from mcp_agent.workflows.llm.base import BaseLLM
 from openai import AsyncOpenAI
 from .config import settings
 
-class CustomLLMAdapter(BaseLLM):
+class CustomLLMAdapter:
     """Custom LLM adapter for non-OpenAI models served via LiteLLM or similar"""
     
     def __init__(self, model: Optional[str] = None, base_url: Optional[str] = None, api_key: Optional[str] = None):

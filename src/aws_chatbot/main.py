@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from aws_chatbot.config import settings
-from aws_chatbot.working_agent import WorkingAWSAgent as AWSAgent
+from aws_chatbot.llm_driven_agent import LLMDrivenAWSAgent as AWSAgent
 
 async def main():
     """Main entry point for the AWS chatbot CLI"""

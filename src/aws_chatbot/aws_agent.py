@@ -123,6 +123,7 @@ class AWSAgent:
         
         try:
             # Use the LLM with AWS tools to process the query
+            # The LLM will decide which tools to use based on the query
             response = await self.llm.generate_str(
                 message=query
             )
@@ -157,29 +158,16 @@ class AWSAgent:
         except Exception as e:
             return [{"error": f"Error suggesting commands: {str(e)}"}]
     
-    async def execute_command(self, command: str) -> Dict[str, Any]:
-        """Execute an AWS CLI command"""
+    async def get_available_tools(self) -> List[Dict[str, Any]]:
+        """Get list of available AWS tools from MCP server"""
         if not self._initialized or not self.agent:
-            return {
-                "success": False,
-                "error": "Agent not initialized",
-                "command": command
-            }
+            return []
         
         try:
-            # Use the call_aws tool from the MCP server
-            result = await self.agent.call_tool("call_aws", {"command": command})
-            
-            return {
-                "success": True,
-                "output": result.get("output", ""),
-                "command": command
-            }
+            tools = await self.agent.list_tools()
+            return tools
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"Error executing command: {str(e)}",
-                "command": command
-            }
+            self.logger.error(f"Error getting available tools: {str(e)}")
+            return []
 
 
