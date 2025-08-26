@@ -1,5 +1,7 @@
 
 
+print("🌐 [WEB_APP] Starting web application initialization...")
+
 import asyncio
 import json
 from typing import Dict, Any, Optional
@@ -12,21 +14,29 @@ from .llm_driven_agent import LLMDrivenAWSAgent as AWSAgent
 from .config import settings
 from .conversation_tracker import get_conversation_tracker, reset_conversation_tracker
 
+print("🌐 [WEB_APP] All imports loaded successfully")
+print(f"🌐 [WEB_APP] Settings loaded - Host: {settings.host}, Port: {settings.port}")
+
 # Global agent instance
 aws_agent = None
+print("🌐 [WEB_APP] Global agent instance initialized as None")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage the lifecycle of the AWS agent"""
     global aws_agent
     
+    print("🚀 [LIFESPAN] Starting application lifespan management...")
+    
     # Startup
     try:
+        print("🚀 [LIFESPAN] Creating AWS Agent instance...")
         aws_agent = AWSAgent()
+        print("🚀 [LIFESPAN] AWS Agent instance created, starting agent...")
         await aws_agent.start()
-        print("AWS Agent initialized successfully")
+        print("🚀 [LIFESPAN] AWS Agent initialized successfully")
     except Exception as e:
-        print(f"Failed to initialize AWS Agent: {e}")
+        print(f"❌ [LIFESPAN] Failed to initialize AWS Agent: {e}")
         import traceback
         traceback.print_exc()
         aws_agent = None
@@ -34,13 +44,18 @@ async def lifespan(app: FastAPI):
     yield
     
     # Shutdown
+    print("🛑 [LIFESPAN] Application shutdown initiated...")
     if aws_agent:
-        print("Shutting down AWS Agent")
+        print("🛑 [LIFESPAN] Shutting down AWS Agent...")
         try:
             await aws_agent.stop()
+            print("🛑 [LIFESPAN] AWS Agent shutdown completed")
         except Exception as e:
-            print(f"Error shutting down agent: {e}")
+            print(f"❌ [LIFESPAN] Error shutting down agent: {e}")
+    else:
+        print("🛑 [LIFESPAN] No AWS Agent to shutdown")
 
+print("🌐 [WEB_APP] Creating FastAPI app...")
 # Create FastAPI app
 app = FastAPI(
     title="AWS Chatbot",
@@ -48,14 +63,18 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+print("🌐 [WEB_APP] FastAPI app created successfully")
 
+print("🌐 [WEB_APP] Mounting static files and templates...")
 # Mount static files and templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+print("🌐 [WEB_APP] Static files and templates mounted successfully")
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
     """Serve the main chatbot interface"""
+    print(f"🏠 [HOME] Serving home page to client: {request.client.host}")
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.get("/conversation-viewer", response_class=HTMLResponse)
@@ -68,17 +87,25 @@ async def chat(request: Request, message: str = Form(...)):
     """Handle chat messages"""
     global aws_agent
     
+    print(f"💬 [CHAT] Received chat message from {request.client.host}: '{message[:100]}...'")
+    
     if not aws_agent:
+        print("❌ [CHAT] AWS Agent not available")
         raise HTTPException(status_code=503, detail="AWS Agent not available")
     
     try:
+        print(f"💬 [CHAT] Processing query with AWS Agent...")
         response = await aws_agent.process_query(message)
+        print(f"✅ [CHAT] Query processed successfully, response length: {len(response)}")
         return JSONResponse({
             "success": True,
             "response": response,
             "message": message
         })
     except Exception as e:
+        print(f"❌ [CHAT] Error processing query: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse({
             "success": False,
             "error": str(e),
@@ -375,20 +402,29 @@ async def health_check():
     """Health check endpoint"""
     global aws_agent
     
+    print(f"🏥 [HEALTH] Health check requested")
+    print(f"🏥 [HEALTH] AWS Agent available: {aws_agent is not None}")
+    
     memory_info = {}
     detailed_tracking_info = {}
     
     if aws_agent:
         try:
+            print(f"🏥 [HEALTH] Getting memory stats from AWS Agent...")
             memory_stats = aws_agent.get_memory_stats()
             memory_info = {
                 "total_interactions": memory_stats['total_interactions'],
                 "recent_commands_count": len(memory_stats['recent_commands'])
             }
-        except:
+            print(f"🏥 [HEALTH] Memory stats retrieved: {memory_info}")
+        except Exception as e:
+            print(f"❌ [HEALTH] Error getting memory stats: {e}")
             memory_info = {"error": "Could not retrieve memory stats"}
+    else:
+        print(f"🏥 [HEALTH] AWS Agent not available, skipping memory stats")
     
     try:
+        print(f"🏥 [HEALTH] Getting conversation tracker...")
         tracker = get_conversation_tracker()
         summary = tracker.get_session_summary()
         detailed_tracking_info = {
@@ -397,10 +433,12 @@ async def health_check():
             "conversations": summary.get("conversations", 0),
             "event_counts": summary.get("event_counts", {})
         }
-    except:
+        print(f"🏥 [HEALTH] Tracking info retrieved: {detailed_tracking_info}")
+    except Exception as e:
+        print(f"❌ [HEALTH] Error getting tracking info: {e}")
         detailed_tracking_info = {"error": "Could not retrieve detailed tracking info"}
     
-    return JSONResponse({
+    response_data = {
         "status": "healthy",
         "agent_available": aws_agent is not None,
         "memory": memory_info,
@@ -410,7 +448,10 @@ async def health_check():
             "read_only": settings.read_operations_only,
             "model": settings.llm_model
         }
-    })
+    }
+    
+    print(f"🏥 [HEALTH] Returning health response: {response_data}")
+    return JSONResponse(response_data)
 
 if __name__ == "__main__":
     import uvicorn

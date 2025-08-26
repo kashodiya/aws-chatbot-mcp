@@ -8,6 +8,8 @@ from .config import settings
 from .llm_adapter import CustomLLMAdapter
 from .conversation_tracker import get_conversation_tracker
 
+print("🤖 [AGENT] LLM Agent module loading...")
+
 class ConversationMemory:
     """Simple conversation memory to track user interactions and AWS command results"""
     
@@ -63,22 +65,31 @@ class LLMDrivenAWSAgent:
     """LLM-driven AWS Agent with conversation memory that uses the LLM to determine what commands to execute"""
     
     def __init__(self):
+        print("🤖 [AGENT] Initializing LLM Driven AWS Agent...")
         self._initialized = False
         self.llm = None
         self.memory = ConversationMemory()
+        print("🤖 [AGENT] Agent instance created")
     
     async def initialize(self):
         """Initialize the agent with LLM"""
+        print("🤖 [AGENT] Starting agent initialization...")
         if self._initialized:
+            print("🤖 [AGENT] Agent already initialized, skipping")
             return
             
         # Initialize the LLM adapter
+        print("🤖 [AGENT] Creating LLM adapter...")
         self.llm = CustomLLMAdapter()
+        print("🤖 [AGENT] LLM adapter created successfully")
         self._initialized = True
+        print("🤖 [AGENT] Agent initialization complete")
     
     async def start(self):
         """Start the agent"""
+        print("🤖 [AGENT] Starting agent...")
         await self.initialize()
+        print("🤖 [AGENT] Agent started successfully")
         return self
     
     async def stop(self):
@@ -87,18 +98,29 @@ class LLMDrivenAWSAgent:
     
     async def process_query(self, query: str) -> str:
         """Process a user query using LLM with conversation memory"""
+        print(f"🤖 [AGENT] Processing query: '{query[:100]}...'")
+        
         if not self._initialized or not self.llm:
+            print("❌ [AGENT] Agent not initialized")
             return "Agent not initialized."
         
+        print("🤖 [AGENT] Agent is initialized, proceeding with query processing")
+        
         # Get detailed conversation tracker
+        print("🤖 [AGENT] Getting conversation tracker...")
         tracker = get_conversation_tracker()
         
         # Start a new conversation turn
+        print("🤖 [AGENT] Starting new conversation turn...")
         conversation_id = tracker.start_conversation(query)
+        print(f"🤖 [AGENT] Conversation ID: {conversation_id}")
         
         # Get conversation context for memory-aware responses
+        print("🤖 [AGENT] Getting context summary...")
         context_summary = self.memory.get_context_summary()
         recent_commands = self.memory.get_recent_commands()
+        print(f"🤖 [AGENT] Context summary: {context_summary}")
+        print(f"🤖 [AGENT] Recent commands: {recent_commands}")
         
         # Log agent reasoning
         tracker.log_agent_reasoning(
