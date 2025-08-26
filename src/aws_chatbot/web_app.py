@@ -95,10 +95,19 @@ async def api_chat(request: Request):
             raise HTTPException(status_code=400, detail="Message is required")
         
         response = await aws_agent.process_query(message)
+        
+        # Get memory statistics
+        memory_stats = aws_agent.get_memory_stats()
+        
         return JSONResponse({
             "success": True,
             "response": response,
-            "message": message
+            "message": message,
+            "memory": {
+                "total_interactions": memory_stats['total_interactions'],
+                "recent_commands_count": len(memory_stats['recent_commands']),
+                "has_context": memory_stats['total_interactions'] > 0
+            }
         })
     except Exception as e:
         return JSONResponse({
@@ -151,14 +160,66 @@ async def execute_command(request: Request):
             "error": str(e)
         }, status_code=500)
 
+@app.get("/api/memory")
+async def get_memory_stats():
+    """Get conversation memory statistics"""
+    global aws_agent
+    
+    if not aws_agent:
+        raise HTTPException(status_code=503, detail="AWS Agent not available")
+    
+    try:
+        memory_stats = aws_agent.get_memory_stats()
+        return JSONResponse({
+            "success": True,
+            "memory": memory_stats
+        })
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
+@app.post("/api/memory/clear")
+async def clear_memory():
+    """Clear conversation memory"""
+    global aws_agent
+    
+    if not aws_agent:
+        raise HTTPException(status_code=503, detail="AWS Agent not available")
+    
+    try:
+        aws_agent.clear_memory()
+        return JSONResponse({
+            "success": True,
+            "message": "Memory cleared successfully"
+        })
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     global aws_agent
     
+    memory_info = {}
+    if aws_agent:
+        try:
+            memory_stats = aws_agent.get_memory_stats()
+            memory_info = {
+                "total_interactions": memory_stats['total_interactions'],
+                "recent_commands_count": len(memory_stats['recent_commands'])
+            }
+        except:
+            memory_info = {"error": "Could not retrieve memory stats"}
+    
     return JSONResponse({
         "status": "healthy",
         "agent_available": aws_agent is not None,
+        "memory": memory_info,
         "settings": {
             "aws_region": settings.aws_region,
             "read_only": settings.read_operations_only,
