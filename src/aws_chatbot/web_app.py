@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from contextlib import asynccontextmanager
-from .simple_agent import SimpleAWSAgent as AWSAgent
+from .working_agent import WorkingAWSAgent as AWSAgent
 from .config import settings
 
 # Global agent instance

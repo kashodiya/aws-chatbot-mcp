@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from aws_chatbot.config import settings
-from aws_chatbot.simple_agent import SimpleAWSAgent
+from aws_chatbot.working_agent import WorkingAWSAgent as AWSAgent
 
 async def main():
     """Main entry point for the AWS chatbot CLI"""
@@ -25,7 +25,7 @@ async def main():
     
     # Initialize the AWS agent
     try:
-        agent = SimpleAWSAgent()
+        agent = AWSAgent()
         await agent.start()
         
         print("✅ AWS Agent initialized successfully!")
